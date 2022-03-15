@@ -21,7 +21,6 @@ importPackage(java.lang);
 importPackage(java.net);
 importPackage(java.io);
 
-const BOT_SCRIPT_NAME = "WordChain.js"; // 해당 봇(스크립트)의 파일 이름 (예시: "끝말잇기.js")
 const GAME_WORD_COMMAND = "::"; // 끝말잇기 단어 입력 시 사용할 명령어 (예시: "::사과", "::과자" 등)
 const BOT_COMMAND_WORD = "/끝말잇기"; // 끝말잇기 명령어 입력 시 사용할 글자 (예시: "/끝말잇기", "@끝말" 등)
 const GAME_ROOM_FILTER = []; // 끝말잇기 기능을 사용하지 않을 방 목록 (예시: ["방1", "방2"])
@@ -106,6 +105,18 @@ String.prototype.getLast = function() {
 	return this[this.length - 1] /* .getDoum() */;
 }
 
+/** 
+ * 해당 객체의 값들을 반환하는 함수
+ * 
+ * @param {object} object 값들을 산출할 객체
+ * @returns {array} 해당 객체의 값 목록
+ * @author beuwi
+ * @version 1.4.0
+ */
+Object.values = function(object) {
+	return Object.keys(object).map(key => object[key]);
+}
+
 const Bot = {
 	/** 
 	 * 메시지를 전송할 때 호출되는 함수
@@ -114,8 +125,10 @@ const Bot = {
 	 * @author beuwi
 	 * @version 1.4.0
 	 */
+	reply : function(room, message) { },
 	// reply : function(replier, message) { },
-	reply : function(message) { },
+	// JS는 함수 오버로딩이 안됨
+	// reply : function(message) {},
 
 	/** 
 	 * 에러 내용을 전송할 때 호출되는 함수
@@ -137,7 +150,7 @@ const Web = {
 	 * @version 1.4.0
 	 */
 	getData : function(value) {
-		let connect = new URL("https://raw.githubusercontent.com/ttyy3388/wordchain/master/resources" + value).openConnection();
+		let connect = new URL("https://raw.githubusercontent.com/ttyy3388/wordchain/master/resources/" + value).openConnection();
 
 		connect.setConnectTimeout(5000);
 		connect.setUseCaches(false);
@@ -178,37 +191,15 @@ const DB =
 		'mean': ["뜻1", "뜻2"]
 	}],
 	
+	 // (Game.init)에서 값 입력
 	GameData : {
-		'turn': 0,
-		'room': null,
-		'power': false, // 게임 전원 여부
-		'manager': {}, // 방장 플레이어 정보
-		'created': false,
-		'players': {/* { // 플레이어 데이터 저장
-			names: function() {
-				return data['players'].map(player => player['name']);
-			}
-		} */ },
-		'timer': { // 타이머 관련 설정
-			'power': true, // 타이머 동작 여부
-			'count': 0, // 타이머 카운트 값
-			'thread': null, // 타이머 동작 쓰레드
-		},
-		'round': 0,
-		'mode': { // 모드 관련 설정
-			'onecom': false, // 한방단어 사용 여부
-		},
-		'ai': {
-			'power': false,
-			'id': null,
-			// created: false,
-			'level': 0,
-			'name': null,
-		}
+		inited: false, // 객체 초기화 여부
 	},
 
 	// AIData : {},
-	WordList : [],
+	StartWord : {}, // {"가":["가족", "가정", ...]}, {"나":["나라", ...]}, ...} 형식
+	WordList : [], // {"가족", "가정", "나라", ...} 형식
+
 	UsedWord : [],
 
 	/** 
@@ -218,18 +209,18 @@ const DB =
 	 * @version 1.4.0
 	 */
 	load : function() {
-		DB.WordList = JSON.parse(Web.getData("list.txt"));
+		let data = JSON.parse(Web.getData("data.txt"));
+		DB.StartWord = data["StartWord"];
+		DB.WordList = data["WordList"];
 
 		// 커스텀 단어 추가
 		DB.CustomWord.map(word => {
-			let name = word['name'], 
-				mean = word['mean'];
+			let name = word['name'];
 			// 데이터 유효성 검사
-			if (!(name || mean)) {
+			if (!name) {
 				return false;
 			}
 			let fchar = name.getFirst();
-			DB.WordList[name] = [mean];
 			(DB.StartWord[fchar] != null) ?
 			DB.StartWord[fchar].push(name) :
 			DB.StartWord[fchar] = [name];
@@ -506,11 +497,11 @@ const Word = {
 	 */
 	isWord : function(word) {
 		// 먼저 단어 목록에 있는지
-		if (Object.keys(DB.WordList).includes(word)) {
+		if (DB.WordList.includes(word)) {
 			return true;
 		}
 		// 없다면 유저가 추가한 단어장에 있는지
-		if (Object.keys(DB.CustomWord).includes(word)) {
+		if (DB.CustomWord.map(custom => custom['name']).includes(word)) {
 			return true;
 		}
 		// 해당되지 않는다면 존재하지 않는 단어로 판단
@@ -564,9 +555,23 @@ const Word = {
 		if (!Word.isWord(word)) {
 			return null;
 		}
-		let fchar = word.getFirst(),
-			path = "data/" + fchar + "/" + word + ".txt";
-		return JSON.parse(Web.getData(path))
+
+		let custom = DB.CustomWord,
+			result = null;
+		
+		// 사용자 추가 단어라면
+		if (custom[word] != undefined) {
+			result = custom[word]['mean'];
+		}
+		// 표국대 기본 단어라면
+		else {
+			let fchar = word.getFirst(),
+			// 원래는 (txt / json) 확장자가 붙은 상태로 서버에 넣었어야 했으나 군머 복귀로 수정 불가
+			path = "list/" + fchar + "/" + word /* + ".txt" */ ;
+			result = JSON.parse(Web.getData(path));
+		}
+
+		return result;
 	},
 
 	/** 
@@ -579,7 +584,7 @@ const Word = {
 	getRandom : function(check) {
 		let mode = DB.GameData['mode'];
 		
-		let list = Object.keys(DB.WordList),
+		let list = DB.WordList,
 			word = null, count = 0;
 
 		while (true) {
@@ -673,11 +678,20 @@ const Timer = {
 	/** 
 	 * 타이머를 중지할 때 호출되는 함수
 	 * 
+	 * @returns {boolean} 타이머 중지 여부
  	 * @author beuwi
 	 * @version 1.4.0
 	 */
 	stop : function() {
 		let data = DB.GameData['timer'];
+
+		if (!data) {
+			return;
+		}
+
+		// 타이머 관련 값 초기화
+		data['count'] = 0;
+		data['power'] = false;
 
 		try {
 			// 쓰레드를 가져왔다면 정지
@@ -691,24 +705,53 @@ const Timer = {
 		}
 		// 모종의 이유로 쓰레드를 종료하지 못했다면
 		catch(e) {
-			// 직접 타이머 관련 값 초기화
-			data['count'] = 0;
-			data['power'] = false;
+			return false;
 		}
+
+		return true;
 	}
 }
 
 const Game =
 {
 	/** 
-	 * 게임에 관련된 값을 초기화하는 함수
+	 * 게임에 관련된 값을 초기화하는 함수(!수정 금지!)
 	 * (Api.reload()을 대신하여 다른 앱과의 호환성 지원)
 	 * 
  	 * @author beuwi
-	 * @version 1.4.0
+	 * @version 1.4.1
 	 */
 	init : function() {
-		// 현재 호환성을 고려치 않기에 사용 X
+		DB.GameData = {
+			'turn': 0,
+			'room': null,
+			'power': false, // 게임 전원 여부
+			'manager': {}, // 방장 플레이어 정보
+			'inited': true, // 객체 초기화 여부
+			'created': false,
+			'players': [/* { // 플레이어 데이터 저장
+				names: function() {
+					return data['players'].map(player => player['name']);
+				}
+			} */ ],
+			'timer': { // 타이머 관련 설정
+				'power': true, // 타이머 동작 여부
+				'count': 0, // 타이머 카운트 값
+				'thread': null, // 타이머 동작 쓰레드
+			},
+			'round': 0,
+			'mode': { // 모드 관련 설정
+				'onecom': false, // 한방단어 사용 여부
+			},
+			'ai': {
+				'power': false,
+				'id': null,
+				// created: false,
+				'level': 0,
+				'name': null,
+			}
+		};
+		DB.UsedWord = [];
 	},
 
 	/** 
@@ -743,7 +786,7 @@ const Game =
 	 * @param {string} room 방 이름
 	 * @param {string} player 방장 정보
  	 * @author beuwi
-	 * @version 1.4.0
+	 * @version 1.4.1
 	 */
 	create : function(room, player) {
         // 게임 데이터 입력
@@ -757,11 +800,12 @@ const Game =
 	 * 게임을 종료했을 때 호출되는 함수
 	 * 
  	 * @author beuwi
-	 * @version 1.4.0
+	 * @version 1.4.1
 	 */
 	off : function() {
 		Timer.stop();
-		Api.reload(BOT_SCRIPT_NAME);
+		Game.init();
+		// Api.reload(BOT_SCRIPT_NAME);
 	},
 
 	/** 
@@ -780,7 +824,7 @@ const Game =
 	 * @param {string} sender 참가한 사람의 이름
 	 * @returns {object} 생성된 플레이어 정보
  	 * @author beuwi
-	 * @version 1.4.0
+	 * @version 1.4.1
 	 */
     join : function(id, name) {
 		let data = DB.GameData;
@@ -803,9 +847,9 @@ const Game =
 	 * 
 	 * @param {string} id 대상 ID
  	 * @author beuwi
-	 * @version 1.4.0
+	 * @version 1.4.1
 	 */
-	 find : function(id) {
+	find : function(id) {
 		let data = DB.GameData;
 		let result = null;
 		data['players'].forEach(player => {
@@ -822,9 +866,9 @@ const Game =
 	 * @param {object} tplayer 대상(아웃시킬) 플레이어에 대한 정보
 	 * @param {object} msgobj 출력 메시지에 대한 정보
  	 * @author beuwi
-	 * @version 1.4.0
+	 * @version 1.4.1
 	 */
-	gameout : function(tplayer, msgobj) {
+	out : function(tplayer, msgobj) {
 		let data = DB.GameData;
 
 		let	tindex = data['players'].indexOf(tplayer), // 대상 플레이어 차례
@@ -852,7 +896,7 @@ const Game =
 			data['players'].splice(tindex, 1);
 			
 			// 아웃 메시지 출력
-			Bot.reply(msgobj['gameout']);
+			Bot.reply(data['room'], msgobj['gameout']);
 
 			// 해당 플레이어 차례가 아닌데 아웃이라면
 			if (data['turn'] != tindex) {
@@ -881,7 +925,7 @@ const Game =
 					doummsg = (doum) ? lchar + "(" + doum + ")" : lchar;
 
 					// 다음 플레이어는 새로운 단어로 시작
-					Bot.reply("[ " + xplayer['name'] + " ] 님은 \"" + doummsg + "\"(으)로 시작하는 단어를 입력해 주세요.");
+					Bot.reply(data['room'], "[ " + xplayer['name'] + " ] 님은 \"" + doummsg + "\"(으)로 시작하는 단어를 입력해 주세요.");
 					
 				// 새로운 단어 저장
 				data['word'] = word;
@@ -900,15 +944,17 @@ const Game =
 						return;
 					}
 					// AI가 대답한 단어 출력
-					Bot.reply("[ " + ai['name'] + " ] : " + reply);
+					Bot.reply(data['room'], "[ " + ai['name'] + " ] : " + reply);
+					// AI의 플레이어 정보
+					let aiplayer = Game.find(ai['id']);
 					// 이후 이벤트 발생
-					Game.main(data['room'], GAME_WORD_COMMAND + reply, ai['name']);
+					Game.event(aiplayer, reply);
 				}
 			}
 		}
 		// 남은 플레이어가 2명(1대1 상황)이라면
 		else {	
-			Bot.reply(msgobj['gameoff']);
+			Bot.reply(data['room'], msgobj['gameoff']);
 			Game.off();
 		}
 	},
@@ -918,7 +964,7 @@ const Game =
 	 * 
 	 * @param {object} tplayer 대상 플레이어의 정보
  	 * @author beuwi
-	 * @version 1.4.0
+	 * @version 1.4.1
 	 */
 	/* kickout: function(tplayer) {
 		let data = DB.GameData;
@@ -941,7 +987,7 @@ const Game =
 	 * 
 	 * @param {string} tplayer 대상 플레이어의 정보
  	 * @author beuwi
-	 * @version 1.4.0
+	 * @version 1.4.1
 	 */
 	giveup : function(tplayer) {
 		let data = DB.GameData;
@@ -959,7 +1005,7 @@ const Game =
 		// 대상 플레이어 값을 찾지 못했다면
 		// ㄴ 예외사항이 발생하면 작동불가니까 오류 출력
 		/* if (!tplayer) {
-			Bot.reply("잘못된 플레이어 입력입니다.");
+			Bot.reply(data['room'], 잘못된 플레이어 입력입니다.");
 			return;
 		} */
 
@@ -979,7 +1025,9 @@ const Game =
 				"< 기권 패배 >\n\n" +
 				"[ " + tplayer['name'] + " ] 님이 기권하여 아웃되었습니다.\n\n" +
 				"남은 플레이어 : " + 
-				data['players'].filter(player => player['id'] != tplayer['id']).map(player => player['name']).join(", ")
+				data['players']
+					.filter(player => player['id'] != tplayer['id'])
+					.map(player => player['name']).join(", ")
 		});
 	},
 	
@@ -987,7 +1035,7 @@ const Game =
 	 * 타이머 시간이 초과됐을 때 호출되는 함수
 	 * 
  	 * @author beuwi
-	 * @version 1.4.0
+	 * @version 1.4.1
 	 */
 	timeout : function() {
 		let data = DB.GameData;
@@ -1010,12 +1058,14 @@ const Game =
 					"< 시간 초과 >\n\n" + 
 					"[ " + nplayer['name'] + " ] 님이 라이프가 0이 되어 아웃되었습니다.\n\n" +
 					"남은 플레이어 : " + 
-					data['players'].filter(player => player['id'] != nplayer['id']).map(player => player['name']).join(", ")
+					data['players']
+						.filter(player => player['id'] != nplayer['id'])
+						.map(player => player['name']).join(", ")
 			});
 		}
 		// 탈락 대상자가 아닌 목숨만 차감될 경우
 		else {
-			Bot.reply(
+			Bot.reply(data['room'], 
 				"< 시간 초과 >\n\n" + 
 				"[ " + nplayer['name'] + " ] 님의 라이프가 감소합니다.\n\n" + 
 				"남은 라이프 : " + nplayer['life']
@@ -1024,9 +1074,10 @@ const Game =
 	},
 
 	/** 
-	 * 단어 입력에 성공했을 때 호출되는 함수
+	 * 단어 입력을 했을 때 호출되는 함수
 	 * 
-	 * @param {string} sender 참가한 사람의 이름
+	 * @param {string} player 대상 플레이어 정보
+	 * @param {string} word 입력 단어 정보
  	 * @author beuwi
 	 * @version 1.4.1
 	 */
@@ -1039,7 +1090,7 @@ const Game =
 
 		// 혹시나 하는 경우를 대비해서 출력
 		/* if (!player) {
-			Bot.reply("잘못된 플레이어 입력입니다.");
+			Bot.reply(data['room'], "잘못된 플레이어 입력입니다.");
 			return;
 		} */
 
@@ -1070,7 +1121,7 @@ const Game =
 		let meanmsg = (mean.length > 30) ? mean.substr(0, 25) + "..." : mean;
 			doummsg = (doum) ? lchar + "(" + doum + ")" : lchar; 
 			
-		Bot.reply("< " + meanmsg + " >\n\n" +
+		Bot.reply(data['room'], "< " + meanmsg + " >\n\n" +
 			"[ " + player['name'] + " ] 님이 \"" + word + "\" 단어를 입력했습니다.\n" +
 			"[ " + xplayer['name'] + " ] 님은 \"" + doummsg + "\"(으)로 시작하는 단어를 입력해 주세요"
 		);
@@ -1081,10 +1132,12 @@ const Game =
 				// AI가 대답한 단어 저장
 				let reply = AI.getReply(word);
 				// AI가 대답한 단어 출력
-				Bot.reply("[ " + ai['name'] + " ] : " + reply);
+				Bot.reply(data['room'], "[ " + ai['name'] + " ] : " + reply);
+				// AI의 플레이어 정보
+				let aiplayer = Game.find(ai['id']);
 				// 이후 이벤트 발생
-				Game.main(data['room'], GAME_WORD_COMMAND + reply, ai['name']);
-			}	
+				Game.event(aiplayer, reply);
+			}
 		}
 	},
 
@@ -1113,6 +1166,12 @@ const Game =
 		let data = DB.GameData,
 			used = DB.UsedWord;
 
+		// 데이터가 초기화가 안 돼있다면
+		if (!data['inited']) {
+			// 게임 데이터 초기화
+			Game.init();
+		}
+
 		if (isWordCmd) {
 			// 진행중인 게임이 없다면
 			if (!data['power']) {
@@ -1131,7 +1190,8 @@ const Game =
 				let index = list.indexOf(id);
 				// 해당 플레이어 차례가 아니라면
 				if (data['turn'] != index) {
-					Bot.reply("현재 순서는 [ " + data['players'][data['turn']] + " ] 님 차례입니다.");
+					let nplayer = data['players'][data['turn']];
+					Bot.reply(data['room'], "현재 순서는 [ " + nplayer['name'] + " ] 님 차례입니다.");
 					return;
 				}
 				// 적합한 단어로 확인된다면
@@ -1173,12 +1233,18 @@ const Game =
 					switch(input2) {
 						case "정보" :
 						case "데이터" : {
+							/* ------------------------------------------------------- */
 							if (!data['power']) {
 								Bot.reply("진행 중인 게임이 없습니다.");
 								return;
 							}
+							if (!room.equals(data['room'])) {
+								Bot.reply("끝말잇기를 생성한 방에서만 입력이 가능합니다.");
+								return;
+							}
+							/* ------------------------------------------------------- */
 
-							Bot.reply(
+							Bot.reply(data['room'],
 								"< 진행중인 게임 >" + 
 								("\u200b".repeat(500)) + 
 								"\n\n[ 플레이어 정보 ]\n\n" +
@@ -1187,16 +1253,22 @@ const Game =
 									 		"점수 : " + player['score'] + "p\n" +  
 								     		"목숨 : " + player['life'];
 								}).join("\n") + 
-								"[ 사용한 단어 : " + used.join(" - ") + " ]"
+								"\n\n[ 사용한 단어 : " + used.join(" - ") + " ]"
 							);
 							break;
 						}
 
 						case "생성" : {
+							/* ------------------------------------------------------- */
+							if (!room.equals(data['room'])) {
+								Bot.reply("끝말잇기를 생성한 방에서만 입력이 가능합니다.");
+								return;
+							}
 							if (data['created']) {
 								Bot.reply("이미 생성된 게임이 있습니다.");
 								return;
 							}
+							/* ------------------------------------------------------- */
 		
 							let player = Game.join(id, sender);
 							// Game.init();
@@ -1207,19 +1279,26 @@ const Game =
 						}
 		
 						case "참가" : {
+							/* ------------------------------------------------------- */
 							if (!data['created']) {
 								Bot.reply("현재 생성된 게임이 없습니다.");
 								return;
 							}
+							if (!room.equals(data['room'])) {
+								Bot.reply("끝말잇기를 생성한 방에서만 입력이 가능합니다.");
+								return;
+							}
+							/* ------------------------------------------------------- */
 							if (data['power']) {
-								Bot.reply("게임이 이미 진행 중입니다.");
+								Bot.reply(data['room'], "게임이 이미 진행 중입니다.");
 								return;
 							}
 							let list = data['players'].map(player => player['id']);
 							if (list.includes(id)) {
-								Bot.reply("이미 게임에 참가 중입니다.");
+								Bot.reply(data['room'], "이미 게임에 참가 중입니다.");
 								return;
 							}
+							/* ------------------------------------------------------- */
 		
 							let player = Game.join(id, sender);
 
@@ -1231,19 +1310,30 @@ const Game =
 						}
 		
 						case "시작" : {
+							/* ------------------------------------------------------- */
 							if (!data['created']) {
 								Bot.reply("현재 생성된 게임이 없습니다.");
 								return;
 							}
+							if (!room.equals(data['room'])) {
+								Bot.reply("끝말잇기를 생성한 방에서만 입력이 가능합니다.");
+								return;
+							}
+							/* ------------------------------------------------------- */
+							if (data['power']) {
+								Bot.reply(data['room'], "이미 게임이 진행 중입니다.");
+								return;
+							}
 							let manager = data['manager'];
 							if (!id.equals(manager['id'])) {
-								Bot.reply("생성자(방장)만 입력이 가능합니다.");
+								Bot.reply(data['room'], "생성자(방장)만 입력이 가능합니다.");
 								return;
 							}
 							if (data['players'].length < 2) {
-								Bot.reply("여러 명이 참가해야 게임 시작이 가능합니다.");
+								Bot.reply(data['room'], "여러 명이 참가해야 게임 시작이 가능합니다.");
 								return;
 							}
+							/* ------------------------------------------------------- */
 							
 							if (!DB.load()) {
 								Bot.reply("DB를 불러오는 중 문제가 발생했습니다.");
@@ -1268,33 +1358,51 @@ const Game =
 							break;
 						}
 
-						case "나가기" :
 						case "기권" : {
+							/* ------------------------------------------------------- */
+							if (!data['created']) {
+								Bot.reply("현재 생성된 게임이 없습니다.");
+								return;
+							}
+							if (!room.equals(data['room'])) {
+								Bot.reply("끝말잇기를 생성한 방에서만 입력이 가능합니다.");
+								return;
+							}
+							/* ------------------------------------------------------- */
 							let list = data['players'].map(player => player['id']);
 							if (!list.includes(id)) {
-								Bot.reply("참가 중인 게임이 없습니다.");
+								Bot.reply(data['room'], "참가 중인 게임이 없습니다.");
 								return;
 							}
 							let index = list.indexOf(id);
 							if (data['turn'] != index) {
-								Bot.reply("차례가 왔을 때만 기권(나가기)이 가능합니다.");
+								Bot.reply(data['room'], "차례가 왔을 때만 기권이 가능합니다.");
 								return;
 							}
+							/* ------------------------------------------------------- */
 
 							Game.giveup(Game.find(id));
 							break;
 						}
 		
 						case "종료" : {
+							/* ------------------------------------------------------- */
 							if (!data['power']) {
 								Bot.reply("진행 중인 게임이 없습니다.");
 								return;
 							}
-							let manager = data['manager'];
-							if (!id.equals(manager['id'])) {
-								Bot.reply("생성자(방장)만 입력이 가능합니다.");
+							if (!room.equals(data['room'])) {
+								Bot.reply("끝말잇기를 생성한 방에서만 입력이 가능합니다.");
 								return;
 							}
+							/* ------------------------------------------------------- */
+							let manager = data['manager'];
+							if (!id.equals(manager['id'])) {
+								Bot.reply(data['room'], "생성자(방장)만 입력이 가능합니다.");
+								return;
+							}
+							/* ------------------------------------------------------- */
+
 							Bot.reply("끝말잇기 게임이 종료됩니다.");
 							Game.off();
 							break;
@@ -1312,35 +1420,44 @@ const Game =
 				}
 
 				case "모드" : {
-					// 모드는 게임 중에도 변경 가능
-					/* if (data['power']) {
-						Bot.reply("게임이 이미 진행 중입니다.");
-						return;
-					} */
+					/* ------------------------------------------------------- */
 					if (!data['created']) {
 						Bot.reply("현재 생성된 게임이 없습니다.");
 						return;
 					}
-					let manager = data['manager'];
-					if (!id.equals(manager['id'])) {
-						Bot.reply("생성자(방장)만 입력이 가능합니다.");
+					if (!room.equals(data['room'])) {
+						Bot.reply("끝말잇기를 생성한 방에서만 입력이 가능합니다.");
 						return;
 					}
+					/* ------------------------------------------------------- */
+					// 모드는 게임 중에도 변경 가능
+					/* if (data['power']) {
+						Bot.reply("data['room'], 게임이 이미 진행 중입니다.");
+						return;
+					} */
+					let manager = data['manager'];
+					if (!id.equals(manager['id'])) {
+						Bot.reply(data['room'], "생성자(방장)만 입력이 가능합니다.");
+						return;
+					}
+					/* ------------------------------------------------------- */
+
 					switch(input2) {
 						case "한방단어": {
+							let mode = data['mode'];
 							switch(input3) {
 								case "켜기": {
 									Bot.reply("한방단어 모드가 켜졌습니다.");
-									data['mode']['onecom'] = true;
+									mode['onecom'] = true;
 									break;
 								}
 								case "끄기": {
 									Bot.reply("한방단어 모드가 꺼졌습니다.");
-									data['mode']['onecom'] = false;
+									mode['onecom'] = false;
 									break;
 								}
 								default : {
-									Bot.reply(
+									Bot.reply(data['room'],
 										"잘못된 명령어 입력입니다.\n\n" + 
 										"[켜기, 끄기] 중 입력해 주세요."
 									);
@@ -1350,7 +1467,7 @@ const Game =
 							break;
 						}
 						default : {
-							Bot.reply(
+							Bot.reply(data['room'],
 								"잘못된 명령어 입력입니다.\n\n" + 
 								"[한방단어] 중 입력해 주세요."
 							);
@@ -1417,23 +1534,32 @@ const Game =
 				}
 
 				case "AI" : {
-					if (data['power']) {
-						Bot.reply("게임이 이미 진행 중입니다.");
-						return;
-					}
+					/* ------------------------------------------------------- */
 					if (!data['created']) {
 						Bot.reply("현재 생성된 게임이 없습니다.");
 						return;
 					}
-					if (data['manager'] != sender) {
-						Bot.reply("생성자(방장)만 입력이 가능합니다.");
+					/* if (data['power']) {
+						Bot.reply("게임이 이미 진행 중입니다.");
+						return;
+					} */
+					if (!room.equals(data['room'])) {
+						Bot.reply("끝말잇기를 생성한 방에서만 입력이 가능합니다.");
 						return;
 					}
+					/* ------------------------------------------------------- */
+					let manager = data['manager'];
+					if (!id.equals(manager['id'])) {
+						Bot.reply(data['room'], "생성자(방장)만 입력이 가능합니다.");
+						return;
+					}
+					/* ------------------------------------------------------- */
+
 					switch (input2) {
 						case "추가" : {
 							let ai = data['ai'];
 							if (ai['power']) {
-								Bot.reply("이미 추가한 [ " + ai['name'] + " ] (이)가 있습니다.");
+								Bot.reply(data['room'], "이미 추가한 [ " + ai['name'] + " ] (이)가 있습니다.");
 								return;
 							}
 
@@ -1455,7 +1581,7 @@ const Game =
 								}
 
 								default : {
-									Bot.reply(
+									Bot.reply(data['room'],
 										"잘못된 명령어 입력입니다.\n\n" + 
 										"[초보, 중수, 고수] 중 선택해 주세요"
 									);
@@ -1468,7 +1594,7 @@ const Game =
 
 							/* ai['player'] = */ Game.join(ai['id'], ai['name']);
 
-							Bot.reply(
+							Bot.reply(data['room'],
 								"[ " + ai['name'] + " ] 를 게임에 추가했습니다.\n\n" +
 								"현재 참가자 : " + data['players'].map(player => player['name']).join(", ")
 							);
@@ -1481,19 +1607,29 @@ const Game =
 						case "삭제" : {
 							let ai = data['ai'];
 							if (!ai['power']) {
-								Bot.reply("현재 추가된 AI가 없습니다.");
+								Bot.reply(data['room'], "현재 추가된 AI가 없습니다.");
 								return;
 							}
+
+							// 플레이어 목록에서 AI 제거
+							let player = Game.find(ai['id']),
+								index = data['players'].indexOf(player);
+								
+							data['players'].splice(index, 1);
+
+							Bot.reply(data['room'], "[ " + ai['name'] + " ] (이)가 삭제됩니다.");
+
 							// AI 관련 값 초기화
 							ai['power'] = false;
-							ai['id'] = null;
 							ai['name'] = null;
 							ai['level'] = 0;
+							ai['id'] = null;
+
 							break;
 						}
 
 						default : {
-							Bot.reply(
+							Bot.reply(data['room'],
 								"잘못된 명령어 입력입니다.\n\n" + 
 								"[추가, 삭제] 중 입력해 주세요."
 							);
@@ -1517,7 +1653,8 @@ const Game =
 
 function response(room, message, sender, isGroupChat, replier, imageDB) { 
 	try {
-		Bot.reply = function(message) {
+		Bot.reply = function(room, message) {
+			(message) ?	replier.reply(room, message, true) :
 			replier.reply(message);
 		};
 		Bot.error = function(e) {
@@ -1525,11 +1662,19 @@ function response(room, message, sender, isGroupChat, replier, imageDB) {
 				"[ Bot Error ]\n\n" +
 				"Name : " + e.name + "\n" + 
 				"Message : " + e.message + "\n" +
-				"Stack : " + e.stack + "\n" +
-				"Line : " + e.lineNumber
+				"Line : " + e.lineNumber + "\n" +
+				"Stack : " +  + e.stack
 			);
 		}
-
+		if (message.startsWith(">!")) {
+			try {
+			   let start = new Date().getTime();
+				  replier.reply(eval(message.replace(">! ", "")));
+				  replier.reply(((new Date().getTime() - start) / 1000) + ".s");
+			}
+			catch(e) { Bot.error(e); }
+		  }
+   
 		// 유저가 원치않는 방이 아니라면
 		if (!GAME_ROOM_FILTER.includes(room)) {
 			Game.main(room, message, sender, imageDB);
@@ -1538,6 +1683,4 @@ function response(room, message, sender, isGroupChat, replier, imageDB) {
 	catch(e) { Bot.error(e); }
 }
 
-function onStartCompile() {
-	Timer.stop();
-}
+function onStartCompile() { Timer.stop(); }
