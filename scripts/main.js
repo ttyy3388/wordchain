@@ -24,14 +24,14 @@ importPackage(java.io);
 const GAME_WORD_COMMAND = "::"; // 끝말잇기 단어 입력 시 사용할 명령어 (예시: "::사과", "::과자" 등)
 const BOT_COMMAND_WORD = "/끝말잇기"; // 끝말잇기 명령어 입력 시 사용할 글자 (예시: "/끝말잇기", "@끝말" 등)
 const GAME_ROOM_FILTER = []; // 끝말잇기 기능을 사용하지 않을 방 목록 (예시: ["방1", "방2"])
-const GAME_WORD_FILTER = []; // 끝말잇기 금지어를 설정하는 기능 (에시: ["바보", "멍청이"])
+const GAME_WORD_FILTER = []; // 끝말잇기 금지어를 설정하는 기능 (예시: ["바보", "멍청이"])
 const GAME_TIMER_OUT = 30; // 끝말잇기 턴 넘기기 타이머 시간(초) (즉, 설정한 시간 이상 응답이 없으면 아웃)
 const BOT_DELAY_TIME = 2; // AI가 너무 빠르게 답장하는 것을 방지하기 위한 딜레이
 
 /** 
  * 해당 글자의 두음을 반환하는 함수
  * 
- * @returns {string} 두음을 적용한 단어
+ * @returns {string} 두음으로 변환한 단어
  * @author beuwi
  * @version 1.4.0
  */
@@ -86,7 +86,7 @@ String.prototype.getDoum = function() {
 /** 
  * 해당 글자의 첫번째 글자를 반환하는 함수
  * 
- * @returns {string} 해당 단어의 첫번째 글자
+ * @returns {string} 단어의 첫번째 글자
  * @author beuwi
  * @version 1.4.0
  */
@@ -97,7 +97,7 @@ String.prototype.getFirst = function() {
 /** 
  * 해당 글자의 마지막 글자를 반환하는 함수
  * 
- * @returns {string} 해당 단어의 마지막 글자
+ * @returns {string} 단어의 마지막 글자
  * @author beuwi
  * @version 1.4.0
  */
@@ -109,7 +109,7 @@ String.prototype.getLast = function() {
  * 해당 객체의 값들을 반환하는 함수
  * 
  * @param {object} object 값들을 산출할 객체
- * @returns {array} 해당 객체의 값 목록
+ * @returns {array} 객체의 값 목록
  * @author beuwi
  * @version 1.4.0
  */
@@ -119,20 +119,15 @@ Object.values = function(object) {
 
 const Bot = {
 	/** 
-	 * 메시지를 전송할 때 호출되는 함수
-	 * (response)에서 해당 함수 재선언
+	 * 메시지를 전송할 때 호출되는 함수: (response)에서 해당 함수 재선언
 	 * 
 	 * @author beuwi
 	 * @version 1.4.0
 	 */
 	reply : function(room, message) { },
-	// reply : function(replier, message) { },
-	// JS는 함수 오버로딩이 안됨
-	// reply : function(message) {},
 
 	/** 
-	 * 에러 내용을 전송할 때 호출되는 함수
-	 * (response)에서 해당 함수 재선언
+	 * 에러 내용을 전송할 때 호출되는 함수: (response)에서 해당 함수 재선언
 	 * 
 	 * @author beuwi
 	 * @version 1.4.0
@@ -181,6 +176,7 @@ const Web = {
 
 const DB = 
 {
+	// 유저 커스텀 단어 입력
 	CustomWord : [
 	{
 		'name': "단어1",
@@ -191,7 +187,7 @@ const DB =
 		'mean': ["뜻1", "뜻2"]
 	}],
 	
-	 // (Game.init)에서 값 입력
+	// (Game.init)에서 값 입력
 	GameData : {
 		inited: false, // 객체 초기화 여부
 	},
@@ -203,7 +199,7 @@ const DB =
 	UsedWord : [],
 
 	/** 
-	 * DB 정보를 불러올 때 호출되는 함수
+	 * DB를 불러올 때 호출되는 함수
 	 * 
 	 * @author beuwi
 	 * @version 1.4.0
@@ -221,12 +217,11 @@ const DB =
 				return false;
 			}
 			let fchar = name.getFirst();
+			
 			(DB.StartWord[fchar] != null) ?
 			DB.StartWord[fchar].push(name) :
 			DB.StartWord[fchar] = [name];
 		})
-
-		// DB.GameData = JSON.parse(DB.get("GameData"));
 
 		return true;
 	},
@@ -234,7 +229,7 @@ const DB =
 
 const AI = {
 	/** 
-	 * AI가 대답을 할 때 호출되는 함수
+	 * AI가 대답할 때 호출되는 함수
 	 * 
 	 * @param {string} word AI가 대답할 단어
 	 * @returns {string} AI가 대답할 문장
@@ -242,6 +237,13 @@ const AI = {
 	 * @version 1.4.0
 	 */
 	getReply : function(word) {
+		let word = AI.getWord(word);
+		
+		// AI가 패배했을 경우
+		/* if (!word) {
+			return;
+		} */
+
 		// 입력 딜레이 지연
 		Thread.sleep(BOT_DELAY_TIME * 1000);
 		return AI.getWord(word);
@@ -258,12 +260,11 @@ const AI = {
  	 * @author beuwi
 	 * @version 1.4.0
 	 */
-	// 
 	getWord : function(word) {
 		let data = DB.GameData,
 			list = DB.StartWord;
 
-		// (*) 설명을 위해 유저가 입력한 단어가 "사랑"이라고 가정
+		// (*)설명을 위해 유저가 입력한 단어가 "사랑"이라고 가정
 		let swords = list[word.getLast()], // "사랑"의 마지막 글자인 "랑"으로 시작하는 단어 목록
 			dswords = list[word.getLast().getDoum()]; // "랑"에 두음을 적용한 "낭"로 시작하는 단어 목록
 
@@ -285,8 +286,8 @@ const AI = {
 		}
 		
 
-		// (*) AI는 유저가 대답할 단어의 경우의 수마저 계산
-		// (*) "사랑"에 대답할 단어가 ["낭로", "낭랑"] 두 가지가 있다고 가정
+		// (*)AI는 유저가 대답할 단어의 경우의 수마저 계산
+		// (*)"사랑"에 대답할 단어가 ["낭로", "낭랑"] 두 가지가 있다고 가정
 		let rwords = [], // AI가 대답할 단어 목록(중복 단어 제외)
 			rswords = [], // 각 단어의 마지막 글자인 ["로", "랑"]으로 시작하는 단어 목록
 			drwords = [], // ["로", "랑"]에 두음을 적용한 ["노", "낭"]으로 시작하는 단어 목록
@@ -310,7 +311,6 @@ const AI = {
 
 		let onecomwords = [], onecomlen = 0;
 
-		// AI가 대답할 단어 계산
 		for (index = 0 ; index < count ; index ++) {
 			// 윗쪽에서 했던 계산과 동일한 원리(설명 생략)
 			let rword = rwords[index];
@@ -333,7 +333,7 @@ const AI = {
 						continue; // 해당 단어를 무효 처리
 					}
 					// oncomwords[onecomlen ++] = rword;
-					rswords = []; // 해당 배열은 (undefined)상태이므로 빈 배열로 변환
+					rswords = []; // 해당 배열은 (undefined) 상태이므로 빈 배열로 변환
 				}
 			}
 
@@ -365,15 +365,15 @@ const AI = {
 			let rwpoint = rwpoints[index], // 해당 단어로 대답할 경우의 수
 				rword = rwords[index]; // 해당 단어로 대답할 단어
 
-			// (*) AI가 대답할 경우의 수가 100개라고 가정
+			// (*)AI가 대답할 경우의 수가 100개라고 가정
 		
-			if (easyval <= rwpoint) { // 경우의 수가 50개 이상: 이지모드
+			if (easyval <= rwpoint) { // 경우의 수가 50개 이상이라면 이지모드
 				easywords[easycount ++] = rword;
 			}
-			else if (hardval <= rwpoint && rwpoint < easyval) { // 경우의 수가 20개 이상 50개 미만
+			else if (hardval <= rwpoint && rwpoint < easyval) { // 경우의 수가 20개 이상 50개 미만이면 노멀모드
 				nomalwords[nomalcount ++] = rword;
 			}
-			else /* if (hardval < rwpoint) */ { // 경우의 수가 20개 미만
+			else /* if (hardval < rwpoint) */ { // 경우의 수가 20개 미만이면 하드모드
 				hardwords[hardcount ++] = rword;
 			}
 		}
@@ -393,27 +393,27 @@ const AI = {
 
 		switch(DB.GameData['ai']['level']) {
 			case 3 : result =
-				// 하드모드 단어가 있다면 대답
+				// 하드모드 단어가 있다면 반환
 				(hardcount) ? getWord(hardwords) :
-				// 하드모드 단어가 없으면 노멀모드 단어 대답
+				// 하드모드 단어가 없으면 노멀모드 단어 반환
 				(nomalcount) ? getWord(nomalwords) :
-				// 노멀모드 단어도 없으면 이지모드 단어 대답
+				// 노멀모드 단어도 없으면 이지모드 단어 반환
 				(easycount) ? getWord(easywords) : null;
-				// 이지모드 단어도 없으면 AI 패배로 (null) 대답
+				// 이지모드 단어도 없으면 AI 패배로 (null) 반환
 				break;
 
 			case 2 : result =
-				// 노멀모드 단어가 있다면 대답
+				// 노멀모드 단어가 있다면 반환
 				(nomalcount) ? getWord(nomalwords) :
-				// 노멀모드 단어가 없으면 이지모드 단어 대답
+				// 노멀모드 단어가 없으면 이지모드 단어 반환
 				(easycount) ? getWord(easywords) : null;
-				// 이지모드 단어도 없으면 AI 패배로 (null) 대답
+				// 이지모드 단어도 없으면 AI 패배로 (null) 반환
 				break;
 				
 			case 1 : result =
-				// 이지모드 단어가 있다면 대답
+				// 이지모드 단어가 있다면 반환
 				(easycount) ? getWord(easywords) : null;
-				// 이지모드 단어도 없으면 AI 패배로 (null) 대답
+				// 이지모드 단어도 없으면 AI 패배로 (null) 반환
 				break;
 		}
 
@@ -441,36 +441,38 @@ const Word = {
 	 * @version 1.4.0
 	 */
 	check : function(word) {
+
+		let data = DB.GameData;
+		
 		// 단어를 입력하지 않은 경우
 		if (!word) {
-			Bot.reply("단어를 입력해 주세요.");
+			Bot.reply(data['room'], "단어를 입력해 주세요.");
 			return false;
 		}
 		// 한 글자만 입력한 경우
 		if (word.length < 2) {
-			Bot.reply("두 글자 이상의 단어를 입력해 주세요.");
+			Bot.replydata['room'], ("두 글자 이상의 단어를 입력해 주세요.");
 			return false;
 		}
 
 		// 해당 단어가 존재하지 않는 경우
 		if (!Word.isWord(word)) {
-			Bot.reply("\"" + word + "\"(은)는 사전에 등록되지 않은 단어입니다.");
+			Bot.reply(data['room'], "\"" + word + "\"(은)는 사전에 등록되지 않은 단어입니다.");
 			return false;
 		}
 		// 이미 사용한 단어를 입력한 경우
 		if (Word.isUsed(word)) {
-			Bot.reply("이미 사용한 단어입니다.");
+			Bot.reply(data['room'], "이미 사용한 단어입니다.");
 			return false;
 		}
 		// 금지어로 등록한 단어를 입력한 경우
 		if (Word.isForbidden(word)) {
-			Bot.reply("금지어로 등록된 단어입니다.");
+			Bot.reply(data['room'], "금지어로 등록된 단어입니다.");
 			return false;
 		}
 
-		let data = DB.GameData,
-			fchar = word.getFirst();
-			lchar = data['word'].getLast();
+		let fchar = word.getFirst(),
+		lchar = data['word'].getLast();
 
 		// 이전 플레이어가 입력한 단어로 시작하지 않은 경우
 		if (lchar != fchar) {
@@ -479,7 +481,7 @@ const Word = {
 			if (doum != fchar) {
 				// 예시: 소라를 입력했다면 "라(나)"(으)로 시작하는 ... 로 표시"
 				let doummsg = doum ? (lchar + "(" + doum + ")") : lchar; 		
-				Bot.reply("\"" + doummsg + "\"(으)로 시작하는 단어를 입력해 주세요."); 
+				Bot.reply(data['room'], "\"" + doummsg + "\"(으)로 시작하는 단어를 입력해 주세요."); 
 				return false;
 			}
 		}
@@ -559,14 +561,15 @@ const Word = {
 		let custom = DB.CustomWord,
 			result = null;
 		
-		// 사용자 추가 단어라면
+		// 사용자 커스텀 단어라면
 		if (custom[word] != undefined) {
+			// 해당 유저가 저장한 의미를 가져옴
 			result = custom[word]['mean'];
 		}
 		// 표국대 기본 단어라면
 		else {
 			let fchar = word.getFirst(),
-			// 원래는 (txt / json) 확장자가 붙은 상태로 서버에 넣었어야 했으나 군머 복귀로 수정 불가
+			// 추후 (txt / json) 확장자로 파일 수정 필요
 			path = "list/" + fchar + "/" + word /* + ".txt" */ ;
 			result = JSON.parse(Web.getData(path));
 		}
@@ -630,12 +633,13 @@ const Timer = {
 	 * @version 1.4.0
 	 */
 	start : function() {
-		let data = DB.GameData['timer'];
+		let data = DB.GameData,
+			timer = DB.GameData['timer'];
 		let thread = new Thread({ 
 			run : function() {
 			try {
 				// 타이머 전원이 들어와야 작동
-				while (data['power']) {
+				while (timer['power']) {
 					if (thread.isInterrupted()) {
 						break;
 					}
@@ -644,21 +648,21 @@ const Timer = {
 					Thread.sleep(1000);
 						
 					// 타이머 시간 초과 시
-					if (data['count'] >= GAME_TIMER_OUT) {
+					if (timer['count'] >= GAME_TIMER_OUT) {
 						// 현재 플레이어 타임아웃
 						Game.timeout();
 						// 타이머 시간 초기화
-						data['count'] = 0;
+						timer['count'] = 0;
 					}
 					else {
 						// 타이머 시간 증가
-						data['count'] += 1;
+						timer['count'] += 1;
 
 						// 10초 이상 값을 지정해야 메시지 출력
 						if (GAME_TIMER_OUT > 10) {	
 							// 남은 시간이 10초인지 확인
-							if ((GAME_TIMER_OUT - data['count']) == 10) {
-								Bot.reply("10초 남았습니다.");
+							if ((GAME_TIMER_OUT - timer['count']) == 10) {
+								Bot.reply(data['room'], "10초 남았습니다.");
 							}
 						}
 					}	
@@ -672,7 +676,7 @@ const Timer = {
 		thread.start();
 
 		// 타이머 쓰레드 입력
-		data['thread'] = thread;
+		timer['thread'] = thread;
 	},
 
 	/** 
@@ -935,19 +939,15 @@ const Game =
 			if (ai['power']) {
 				// 다음 플레이어가 AI 차례라면
 				if (xplayer['id'].equals(ai['id'])) {
-					// AI가 대답한 단어 저장
 					let reply = AI.getReply(data['word']);
 					// AI가 대답할 단어가 없으면
 					if (!reply) {
-						// AI가 항복한 것처럼 처리
+						// AI가 항복한 것으로 처리
 						Game.giveup(Game.find(ai['id']));
 						return;
 					}
-					// AI가 대답한 단어 출력
 					Bot.reply(data['room'], "[ " + ai['name'] + " ] : " + reply);
-					// AI의 플레이어 정보
 					let aiplayer = Game.find(ai['id']);
-					// 이후 이벤트 발생
 					Game.event(aiplayer, reply);
 				}
 			}
@@ -1003,7 +1003,7 @@ const Game =
 		}); */
 		
 		// 대상 플레이어 값을 찾지 못했다면
-		// ㄴ 예외사항이 발생하면 작동불가니까 오류 출력
+		// ㄴ 예외사항이 발생하면 작동 불가이므로 오류 출력
 		/* if (!tplayer) {
 			Bot.reply(data['room'], 잘못된 플레이어 입력입니다.");
 			return;
@@ -1129,13 +1129,15 @@ const Game =
 		if (ai['power']) {
 			// 다음 플레이어가 AI 차례라면
 			if (xplayer['id'].equals(ai['id'])) {
-				// AI가 대답한 단어 저장
 				let reply = AI.getReply(word);
-				// AI가 대답한 단어 출력
+				// AI가 대답할 단어가 없으면
+				if (!reply) {
+					// AI가 항복한 것으로 처리
+					Game.giveup(Game.find(ai['id']));
+					return;
+				}
 				Bot.reply(data['room'], "[ " + ai['name'] + " ] : " + reply);
-				// AI의 플레이어 정보
 				let aiplayer = Game.find(ai['id']);
-				// 이후 이벤트 발생
 				Game.event(aiplayer, reply);
 			}
 		}
@@ -1166,9 +1168,8 @@ const Game =
 		let data = DB.GameData,
 			used = DB.UsedWord;
 
-		// 데이터가 초기화가 안 돼있다면
+		// 데이터가 초기화 진행
 		if (!data['inited']) {
-			// 게임 데이터 초기화
 			Game.init();
 		}
 
@@ -1653,6 +1654,11 @@ const Game =
 
 function response(room, message, sender, isGroupChat, replier, imageDB) { 
 	try {
+		// 유저가 원치않는 방이라면
+		if (GAME_ROOM_FILTER.includes(room)) {
+			return;
+		}
+
 		Bot.reply = function(room, message) {
 			(message) ?	replier.reply(room, message, true) :
 			replier.reply(message);
@@ -1666,19 +1672,8 @@ function response(room, message, sender, isGroupChat, replier, imageDB) {
 				"Stack : " +  + e.stack
 			);
 		}
-		if (message.startsWith(">!")) {
-			try {
-			   let start = new Date().getTime();
-				  replier.reply(eval(message.replace(">! ", "")));
-				  replier.reply(((new Date().getTime() - start) / 1000) + ".s");
-			}
-			catch(e) { Bot.error(e); }
-		  }
    
-		// 유저가 원치않는 방이 아니라면
-		if (!GAME_ROOM_FILTER.includes(room)) {
-			Game.main(room, message, sender, imageDB);
-		}
+		Game.main(room, message, sender, imageDB);
 	}
 	catch(e) { Bot.error(e); }
 }
